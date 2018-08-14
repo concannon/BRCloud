@@ -1,0 +1,85 @@
+---
+title: "Bad Religion Sentiment"
+author: "Connor Concannon"
+date: "July 27, 2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages('tidytext')
+library(tidyverse);library(tidytext)
+setwd('c:/users/connor/desktop/BRCloud')
+#list.files();getwd()
+
+b <- read.csv('Final BR.csv',stringsAsFactors = F)
+b <- b %>% dplyr::select(-X)
+glimpse(b)
+
+```
+
+## Top WOrds by Sentiment
+```{r}
+
+brtidy <- b %>% 
+  unnest_tokens(word,lyrics) %>% 
+  anti_join(stop_words) 
+
+glimpse(brtidy)
+
+brtidy %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word,sentiment,sort=T) %>% 
+  top_n(n=20) %>%
+  ungroup() %>% 
+  mutate(word=reorder(word,n)) %>% 
+  ggplot(aes(word,n,fill=sentiment))+
+  geom_col()+
+  facet_wrap(~sentiment,scales='free_y')+
+  coord_flip()
+  
+
+```
+
+
+
+## TF-IDF
+```{r}
+
+
+brwords <- brtidy %>% 
+  count(word,album,sort=T)
+
+
+
+total_words <- brwords %>% 
+  group_by(album) %>% 
+  summarise(total=sum(n))
+
+total_words
+
+brwords <- left_join(brwords,total_words) %>% 
+  bind_tf_idf(word,album,n)
+
+brwords
+
+brwords %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>% 
+  group_by(album) %>% 
+  dplyr::filter(total>500) %>% 
+  top_n(5) %>% 
+  ungroup %>%
+  ggplot(aes(word, tf_idf, fill = album)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~album, ncol = 2, scales = "free") +
+  coord_flip()
+
+```
+
+
+
+
