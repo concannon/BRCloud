@@ -1,44 +1,63 @@
 ---
-title: "Bad Religion Sentiment"
+title: "Bad Religion Lyrics Text Analysis"
 author: "Connor Concannon"
 date: "July 27, 2018"
 output: html_document
 editor_options: 
   chunk_output_type: console
 ---
+## Introduction
+
+Bad Religion is a punk band that formed in the Los Angeles area in the early 1980s and continues to make great music and tour today.  Since hearing their music almost 20 years ago, I have been an avid follower.  Over the course of 30 plus years, and over 20 albums, there are a wealth of lyrics to digest.  And this is no ordinary punk band - the group deserves and relishes in the label of [thesaurus punk](https://music.avclub.com/where-to-begin-with-the-thesaurus-punk-of-bad-religion-1798278095).  What other band can work in terms like 'trammel', 'entropy', and 'fecundity' at 120 beats per minute?  This seemed like a perfect opportunity to put Julia Silge and David Robinson's book [Tidy Text Mining with R](http://tidytextmining.com) to use. 
+
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-#install.packages('tidytext')
-library(tidyverse);library(tidytext)
+knitr::opts_chunk$set(echo = TRUE,warning=F,message=F,fig.width=10,fig.height=8)
+#install.packages('hrbrthemes')
+library(tidyverse);
+library(tidytext)
+library(hrbrthemes)
+library(viridis)
+library(wordcloud)
+library(RColorBrewer)
 setwd('c:/users/connor/desktop/BRCloud')
 #list.files();getwd()
 
 b <- read.csv('Final BR.csv',stringsAsFactors = F)
 b <- b %>% dplyr::select(-X)
-glimpse(b)
+# glimpse(b)
+# b %>% 
+#   count(album)
 
 ```
 
-## Top WOrds by Sentiment
+## Top Words by Sentiment
+
+With a name like Bad Religion, I wasn't expecting many positive words.  Terms like wrong, dead/die, lie, bad, etc. top the list. The words designated as positive are not much better.  Usually, when a song includes a word like 'modern' it actually isn't in a positive context - such as 'modern man, evolutionary destroyer'.  
 ```{r}
 
 brtidy <- b %>% 
   unnest_tokens(word,lyrics) %>% 
   anti_join(stop_words) 
 
-glimpse(brtidy)
 
-brtidy %>%
-  inner_join(get_sentiments("bing")) %>%
+brsen <- brtidy %>%
+  inner_join(get_sentiments("bing")) 
+
+
+brsen %>%
   count(word,sentiment,sort=T) %>% 
   top_n(n=20) %>%
   ungroup() %>% 
-  mutate(word=reorder(word,n)) %>% 
-  ggplot(aes(word,n,fill=sentiment))+
+  mutate(Word=reorder(word,n)) %>% 
+  ggplot(aes(Word,n,fill=sentiment))+
   geom_col()+
   facet_wrap(~sentiment,scales='free_y')+
-  coord_flip()
+  coord_flip()+
+  theme_ipsum_tw(grid='none')+
+  theme(legend.position='none')+
+  scale_fill_viridis(discrete=T)+
+  labs(title='Top 20 Bad Religion Lyrics by Sentiment')
   
 
 ```
@@ -46,14 +65,13 @@ brtidy %>%
 
 
 ## TF-IDF
-```{r}
+
+[Term frequency inverse document frequency](https://www.tidytextmining.com/tfidf.html#the-bind_tf_idf-function) (TF-IDF) is a technique used to find important words in a particular document - or song in this case.  The results of the tf-idf calculation grouped by album are also not surprising.  Most of the top words are used in the chorus of songs on that album - and thus repeated many times.  
+```{r,fig.width=10,fig.height=15}
 
 
 brwords <- brtidy %>% 
   count(word,album,sort=T)
-
-
-
 total_words <- brwords %>% 
   group_by(album) %>% 
   summarise(total=sum(n))
@@ -63,7 +81,7 @@ total_words
 brwords <- left_join(brwords,total_words) %>% 
   bind_tf_idf(word,album,n)
 
-brwords
+#brwords %>% arrange(-tf_idf) %>% View()
 
 brwords %>%
   arrange(desc(tf_idf)) %>%
@@ -72,14 +90,100 @@ brwords %>%
   dplyr::filter(total>500) %>% 
   top_n(5) %>% 
   ungroup %>%
-  ggplot(aes(word, tf_idf, fill = album)) +
+  ggplot(aes(word, tf_idf, fill = tf_idf)) +
   geom_col(show.legend = FALSE) +
   labs(x = NULL, y = "tf-idf") +
+  theme_ipsum_tw(grid='none')+
+  theme(legend.position='none')+
+  scale_fill_viridis()+
   facet_wrap(~album, ncol = 2, scales = "free") +
   coord_flip()
 
 ```
 
 
+## Wordcloud
+
+It had to be done.  I am not surprised by any of the high-frequency words in this plot.  Many of Bad Religion's songs cover heady topics like conquering the world, finding truth, and the meaning of life.
+
+```{r}
+pal <- brewer.pal(6,"PRGn")
+
+brtidy %>% 
+  count(word) %>% 
+  with(wordcloud(word,n,max.words=250,colors=pal))
 
 
+
+
+
+
+```
+
+
+## Sentiment Across Albums
+
+This plot is the result of a calculation to derive the aggregate sentiment score (positive words minus negative words) across albums.  No album had a positive sentiment score - though I doubt 'Grandiloquent' is in the Bing sentiment dictionary!  That 'Stranger than Fiction' was the album with the lowest sentiment score makes sense - I believe this album was released in the wake of some turmoil between two of the founding members.
+```{r}
+
+
+
+brtidy %>% 
+  filter(!album %in% c('Short Music For Short People','Punk Rock Song','Tested','Punk-O-Rama 8','Punk Rock Songs (The Epic Years)')) %>% 
+  inner_join(get_sentiments("bing")) %>% 
+  count(album,sentiment) %>% 
+  spread(sentiment,n,fill=0) %>% 
+  mutate(sentiment=positive-negative) %>%
+  mutate(album=reorder(album,sentiment)) %>% 
+  ggplot(aes(album,sentiment,fill=sentiment))+geom_bar(stat='identity')+
+  coord_flip()+
+  theme_ipsum_tw(grid='none')+
+  theme(legend.position='none')+
+  labs(title='Bad Religion Albums by Aggregate Sentiment')
+  
+
+
+
+
+
+
+```
+
+
+
+## N-Grams
+
+The tables show the highest frequency word pairs across the corpus.  Again, many of these bigrams are found in the chorus, and their high frequency makes sense.
+```{r}
+
+
+bigrams <- b %>% 
+  unnest_tokens(bigram,lyrics,token='ngrams',n=2) 
+
+bigrams %>% 
+  separate(bigram, c('word1','word2'),sep=" ") %>% 
+  filter(!word1 %in% stop_words$word) %>% 
+  filter(!word2 %in% stop_words$word) %>% 
+  count(word1, word2, sort=T)
+
+bigrams %>% 
+  count(bigram,sort=T)
+
+
+
+
+
+```
+
+
+```{r,eval=F}
+#install.packages('quanteda')
+
+## Topic Modeling
+library(methods)
+library(quanteda)
+
+#data("data_corpus_inaugural", package = "quanteda")
+
+
+```
